@@ -1,0 +1,590 @@
+Brian Yu
+LAB 8
+
+
+module DE1_SoC (CLOCK_50, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, KEY, LEDR, SW);
+	input logic CLOCK_50; // 50MHz clock.
+	output logic [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
+	output logic [9:0] LEDR;
+	input logic [3:0] KEY; // True when not pressed, False when pressed
+	input logic [9:0] SW;
+
+	logic softreset;
+	logic active;	
+		
+	logic [7:0] code;
+	getRandom getcode(.reset(SW[9]), .clk(CLOCK_50), .out(code), .choose(SW[0]));
+
+	logic but3, but2, but1, but0;
+	
+	button b3 (.Clock(CLOCK_50), .Reset(SW[9]), .pushed(~KEY[3]), .set(but3));
+	button b2 (.Clock(CLOCK_50), .Reset(SW[9]), .pushed(~KEY[2]), .set(but2));
+	button b1 (.Clock(CLOCK_50), .Reset(SW[9]), .pushed(~KEY[1]), .set(but1));
+	button b0 (.Clock(CLOCK_50), .Reset(SW[9]), .pushed(~KEY[0]), .set(but0));
+	
+	assign softreset = (HEX0 != 7'b1111111)&(but3|but2|but1|but0);
+	
+	
+	lockDisplay l3(.clk(CLOCK_50), .reset(SW[9] | softreset), .b3(but3), .b2(but2), .b1(but1), .b0(but0), .NL(1), .lightOn(HEX3));
+	lockDisplay l2(.clk(CLOCK_50), .reset(SW[9] | softreset), .b3(but3), .b2(but2), .b1(but1), .b0(but0), .NL(HEX3), .lightOn(HEX2));
+	lockDisplay l1(.clk(CLOCK_50), .reset(SW[9] | softreset), .b3(but3), .b2(but2), .b1(but1), .b0(but0), .NL(HEX2), .lightOn(HEX1));
+	lockDisplay l0(.clk(CLOCK_50), .reset(SW[9] | softreset), .b3(but3), .b2(but2), .b1(but1), .b0(but0), .NL(HEX1), .lightOn(HEX0));
+	
+	logic [3:0] place;
+	logic [3:0] number;
+	
+	checkNums cN(.key(code), .h3(HEX3), .h2(HEX2), .h1(HEX1), .h0(HEX0), .correctPlace(place), .correctNumber(number), .active(active));
+	
+	seg7 l5(.bcd(place), .leds(HEX5), .active(active));
+	seg7 l4(.bcd(number), .leds(HEX4), .active(active));
+	
+	counter coun(.clk(CLOCK_50), .reset(SW[9]), .h0(HEX0), .out(LEDR));
+endmodule
+
+module DE1_SoC_testbench();
+	logic Clock;
+	logic [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
+	logic [9:0] LEDR;
+	logic [3:0] KEY;
+	logic [9:0] SW;
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		Clock <= 0;
+		forever #(CLOCK_PERIOD/2) Clock <= ~Clock;
+	end 
+	
+	
+	DE1_SoC dut(.CLOCK_50(Clock), .HEX0, .HEX1, .HEX2, .HEX3, .HEX4, .HEX5, .KEY, .LEDR, .SW);
+	
+	initial begin 
+		SW[9] <= 1; SW[0] <= 0; 				@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);														
+		SW[9] <= 0;									@(posedge Clock);
+		SW[0] <= 1;									@(posedge Clock);
+		SW[0] <= 0;									@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+		KEY[3] = 1;									@(posedge Clock);
+		KEY[3] = 0;									@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+		KEY[2] = 1;									@(posedge Clock);
+		KEY[2] = 0;									@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+		KEY[1] = 1;									@(posedge Clock);
+		KEY[1] = 0;									@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+		KEY[0] = 1;									@(posedge Clock);
+		KEY[0] = 0;									@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);														
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);
+														@(posedge Clock);														
+														
+		$stop;
+	end
+endmodule
+
+module lockDisplay(clk, reset, b3, b2, b1, b0, NL, lightOn);
+	input logic clk, reset;
+	input logic b3, b2, b1, b0;
+	input logic [6:0] NL;
+	output logic [6:0] lightOn;
+	enum{off = 32'b1111111, zero = 32'b1000000, one = 32'b1111001, two = 32'b0100100, three = 32'b0110000} ps, ns;
+	always_comb
+		case (ps)
+			off:	if(~(NL == 7'b1111111))
+						begin
+							if(b3)	ns = three;
+							else if(b2) ns = two;
+							else if(b1) ns = one;
+							else if(b0) ns = zero;
+							else ns = off;
+						end
+					else	ns = off;
+			zero:	ns = zero;
+			one: ns = one;
+			two: ns = two;
+			three: ns = three;
+		endcase				
+	always_ff @(posedge clk)
+		if (reset)
+			ps <= off;
+		else
+			ps <= ns;
+	assign lightOn = ps[6:0];
+endmodule	
+
+module lockDisplay_testbench();
+	
+	logic clk, reset;
+	logic b3, b2, b1, b0;
+	logic [6:0] NL;
+	logic [6:0] lightOn;
+	
+	lockDisplay dut(clk, reset, b3, b2, b1, b0, NL, lightOn);
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		clk <= 0;
+		forever #(CLOCK_PERIOD/2) clk <= ~clk;
+	end 
+	
+	initial begin 
+		reset <= 1; NL <= 7'b1111111; b3 <= 0; b2 <= 0; b1 <= 0; b0 <= 0;		@(posedge clk);
+		reset <= 0;								@(posedge clk);
+		NL <= 7'b1000000;						@(posedge clk);
+													@(posedge clk);
+		b3 <= 1;									@(posedge clk);
+		b3 <= 0;									@(posedge clk);
+													@(posedge clk);
+													@(posedge clk);
+		b2 <= 1;									@(posedge clk);
+		b2 <= 0;									@(posedge clk);													
+													@(posedge clk);
+		b1 <= 1;									@(posedge clk);
+		b1 <= 0;									@(posedge clk);													
+													@(posedge clk);
+		b0 <= 1;									@(posedge clk);
+		b0 <= 0;									@(posedge clk);													
+		
+		$stop;
+	end
+endmodule
+			
+module button (Clock, Reset, pushed, set);
+	
+	input logic Clock, Reset;
+	input logic pushed;
+	output logic set;
+	
+	enum { off, hold, on } ps, ns;
+	always_comb
+		case (ps)
+			off:		 	if(pushed)	ns = on;
+							else ns = off;
+			on: 			if(pushed) ns = hold;
+							else ns = off;
+			hold: 		if(pushed) ns = hold;
+							else 	ns = off;
+		endcase
+		
+
+	assign set = (ps == on);
+
+	always_ff @(posedge Clock) begin
+		if (Reset)
+			ps <= off;
+		else ps <= ns;
+		
+	end
+
+endmodule
+
+module button_testbench();
+	logic Clock, Reset, pushed;
+	logic set;
+	
+	button dut(Clock, Reset, pushed, set);
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		Clock <= 0;
+		forever #(CLOCK_PERIOD/2) Clock <= ~Clock;
+	end 
+	
+	initial begin 
+		Reset <= 1; pushed <= 0;			@(posedge Clock);
+		Reset <= 0;								@(posedge Clock);
+													@(posedge Clock);		
+		pushed <= 1;							@(posedge Clock);		
+		pushed <= 0;							@(posedge Clock);
+													@(posedge Clock);
+		pushed <= 1;							@(posedge Clock);		
+													@(posedge Clock);
+													@(posedge Clock);													
+		pushed <= 0;							@(posedge Clock);
+													@(posedge Clock);
+													@(posedge Clock);													
+		$stop;
+	end
+endmodule
+
+module seg7 (bcd, leds, active);
+	input logic [3:0] bcd;
+	input logic active;
+	output logic [6:0] leds;
+	always_comb
+	if(active) begin
+		case (bcd)
+		// Light: 6543210
+			4'b0000: leds = 7'b1000000; // 0
+			4'b0001: leds = 7'b1111001; // 1
+			4'b0010: leds = 7'b0100100; // 2
+			4'b0011: leds = 7'b0110000; // 3
+			4'b0100: leds = 7'b0011001; // 4
+			4'b0101: leds = 7'b0010010; // 5
+			4'b0110: leds = 7'b0000010; // 6
+			4'b0111: leds = 7'b1111000; // 7
+			4'b1000: leds = 7'b0000000; // 8
+			4'b1001: leds = 7'b0010000; // 9
+			default: leds = 7'b1111111;
+		endcase
+	end
+	else	leds = 7'b1111111;
+endmodule
+
+module seg7_testbench();
+	logic [3:0] bcd;
+	logic [6:0] leds;
+	logic active;
+	
+	seg7 dut(bcd, leds, active);
+	initial begin
+		active = 0; bcd = 8; #10;
+		#10;
+		#10;
+		#10;		
+		active = 1; #10;
+		#10;
+		#10;
+		bcd = 4; #10;
+		#10;
+		#10;		
+		active = 0;
+		#10;
+		#10;
+		bcd = 5;
+		#10;
+		#10;
+		#10;		
+	end	
+endmodule
+
+
+module D_FF (q, d, reset, clk);
+	output logic q;
+	input logic d, reset, clk;
+	
+	always_ff @(posedge clk) begin
+		if(reset)
+			q <= 0;
+		else
+			q <= d;
+	end
+endmodule
+
+module LFSR(reset, clk, out);
+	input logic reset, clk;
+	output logic [7:0] out;
+	
+	D_FF d0(.q(out[0]), .d(~(out[7] ^ out[5] ^ out[4] ^ out[3])), .reset(reset), .clk(clk));
+	D_FF d1(.q(out[1]), .d(out[0]), .reset(reset), .clk(clk));
+	D_FF d2(.q(out[2]), .d(out[1]), .reset(reset), .clk(clk));
+	D_FF d3(.q(out[3]), .d(out[2]), .reset(reset), .clk(clk));
+	D_FF d4(.q(out[4]), .d(out[3]), .reset(reset), .clk(clk));
+	D_FF d5(.q(out[5]), .d(out[4]), .reset(reset), .clk(clk));
+	D_FF d6(.q(out[6]), .d(out[5]), .reset(reset), .clk(clk));
+	D_FF d7(.q(out[7]), .d(out[6]), .reset(reset), .clk(clk));
+
+	
+endmodule
+
+module getRandom(reset, clk, out, choose);
+	input logic reset, clk;
+	input logic choose;
+	output logic[7:0] out;
+	
+	logic[7:0] RNG;
+	LFSR rn(.reset(reset), .clk(clk), .out(RNG));
+	
+	always_ff @(posedge clk) begin
+	if(reset)
+		out <= 8'b00000000;
+	else if(choose)
+		out <= RNG;
+	else
+		out <= out;
+	end
+	
+endmodule
+
+module getRandom_testbench();
+	logic reset, clk;
+	logic choose;
+	logic [7:0] out;
+	getRandom dut(reset, clk, out, choose);
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		clk <= 0;
+		forever #(CLOCK_PERIOD/2) clk <= ~clk;
+	end 
+	
+	initial begin 
+		reset <= 1; 							@(posedge clk);
+		reset <= 0;								@(posedge clk);
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+		choose <= 1;							@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+		choose <= 0;							@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);															
+													@(posedge clk);		
+													@(posedge clk);		
+													
+		$stop;
+	end
+endmodule
+
+module LFSR_testbench();
+	logic reset, clk;
+	logic [7:0] out;
+	
+	LFSR dut(reset, clk, out);
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		clk <= 0;
+		forever #(CLOCK_PERIOD/2) clk <= ~clk;
+	end 
+	
+	initial begin 
+		reset <= 1; 							@(posedge clk);
+		reset <= 0;								@(posedge clk);
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+													
+		$stop;
+	end
+endmodule
+
+module checkNums(key, h3, h2, h1, h0, correctPlace, correctNumber, active);
+	input logic [7:0] key;
+	input logic [6:0] h3, h2, h1, h0;
+	output logic active;
+	output logic [3:0] correctPlace;
+	output logic [3:0] correctNumber;
+	logic [1:0] h3num, h2num, h1num, h0num;
+	
+	logic [3:0] placecounter = 0;
+	logic [3:0] numbercounter = 0;
+	
+	convertHex c3(.in(h3), .out(h3num));
+	convertHex c2(.in(h2), .out(h2num));
+	convertHex c1(.in(h1), .out(h1num));
+	convertHex c0(.in(h0), .out(h0num));
+	
+	assign active = (h3 != 7'b1111111 & h2 != 7'b1111111 & h1 != 7'b1111111 & h0 != 7'b1111111);
+	
+	always_comb begin
+		placecounter = 0;
+		numbercounter = 0;
+		if(key[7:6] == h3num)
+			placecounter++;
+		else if((key[7:6] == h2num) | (key[7:6] == h1num) | (key[7:6] == h0num))
+			numbercounter++;
+		
+		if(key[5:4] == h2num)
+			placecounter++;
+		else if((key[5:4] == h3num) | (key[5:4] == h1num) | (key[5:4] == h0num))
+			numbercounter++;
+	
+		if(key[3:2] == h1num)
+			placecounter++;
+		else if((key[3:2] == h3num) | (key[3:2] == h2num) | (key[3:2] == h0num))
+			numbercounter++;
+	
+		if(key[1:0] == h0num)
+			placecounter++;	
+		else if((key[1:0] == h3num) | (key[1:0] == h2num) | (key[1:0] == h1num))
+			numbercounter++;
+	end
+	
+	assign correctPlace = placecounter;
+	assign correctNumber = numbercounter;
+	
+endmodule
+
+module checkNums_testbench();
+	logic [7:0] key;
+	logic [6:0] h3, h2, h1, h0;
+	logic [3:0] correctPlace;
+	logic [3:0] correctNumber;
+	logic active;
+	
+	checkNums dut(key, h3, h2, h1, h0, correctPlace, correctNumber, active);
+	initial begin
+		key = 8'b11111111; h3 = 7'b1111111; h2 = 7'b1111111; h1 = 7'b1111111; h0 = 7'b1111111; #10;
+		h3 = 7'b0110000; #10;
+		h2 = 7'b0100100; #10;
+		h1 = 7'b1111001; #10;
+		h0 = 7'b1000000;
+		#10;
+		h2 = 7'b0110000;
+		#10;
+		h1 = 7'b0110000;
+		#10;
+		h0 = 7'b0110000;
+		#10;
+		#10;
+		#10;
+	end	
+endmodule
+
+module convertHex(in, out);
+	input logic[6:0] in;
+	output logic[1:0] out;
+		
+	always_comb begin
+		case (in)
+			7'b1000000: out = 2'b00;
+			7'b1111001: out = 2'b01;
+			7'b0100100: out = 2'b10;
+			7'b0110000: out = 2'b11;
+			default: out = 2'bXX;
+		endcase
+	end
+	
+endmodule
+
+module incre(clk, reset, h0, out);
+	input logic clk, reset;
+	input logic [6:0] h0;
+	output logic out;
+	enum{off, on, hold } ps, ns;
+	always_comb
+		case (ps)
+			off:	if(~(h0 == 7'b1111111))	ns = on;		
+					else	ns = off;
+			on:	if(~(h0 == 7'b1111111)) ns = hold;
+					else ns = off;
+			hold: if(~(h0 == 7'b1111111)) ns = hold;
+					else ns = off;
+		endcase			
+	
+	always_ff @(posedge clk) begin
+		if (reset)
+			ps <= off;
+		else
+			ps <= ns;
+	end
+	
+	assign out = (ps == on);	
+endmodule	
+
+
+module incre_testbench();
+	logic reset, clk;
+	logic [6:0] h0;
+	logic out;
+	incre dut(clk, reset, h0, out);
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		clk <= 0;
+		forever #(CLOCK_PERIOD/2) clk <= ~clk;
+	end 
+	
+	initial begin 
+		reset <= 1; h0 <= 7'b1111111;		@(posedge clk);
+		reset <= 0;								@(posedge clk);
+													@(posedge clk);		
+		h0 <= 7'b1000000;						@(posedge clk);		
+													@(posedge clk);		
+													@(posedge clk);		
+		h0 <= 7'b1111111;						@(posedge clk);		
+													@(posedge clk);		
+		h0 <= 7'b1000000;						@(posedge clk);		
+		h0 <= 7'b1111111;						@(posedge clk);															
+													@(posedge clk);		
+													@(posedge clk);		
+													
+		$stop;
+	end
+endmodule
+
+module counter(clk, reset, h0, out);
+	input logic clk, reset;
+	input logic[6:0] h0;
+	output logic[9:0] out;
+	logic increment;
+	incre inc(.clk(clk), .reset(reset), .h0(h0), .out(increment));
+	always_ff @(posedge clk) begin
+		if(reset)
+			out <= 10'b0000000000;
+		else
+			begin
+				if(increment)
+					out <= out+1;
+				else
+					out <= out;
+					
+			end
+	end
+endmodule
+
+module counter_testbench();
+	logic clk, reset;
+	logic [6:0] h0;
+	logic [9:0]out;
+	counter dut(clk, reset, h0, out);
+	
+	parameter CLOCK_PERIOD=100;
+	initial begin
+		clk <= 0;
+		forever #(CLOCK_PERIOD/2) clk <= ~clk;
+	end 
+	
+	initial begin 
+		reset <= 1; h0 <= 7'b1111111;		@(posedge clk);
+		reset <= 0;								@(posedge clk);
+													@(posedge clk);		
+		h0 <= 7'b1000000;						@(posedge clk);		
+		h0 <= 7'b1111111;						@(posedge clk);		
+													@(posedge clk);		
+		h0 <= 7'b1000000;						@(posedge clk);		
+		h0 <= 7'b1111111;						@(posedge clk);															
+													@(posedge clk);		
+													@(posedge clk);		
+													
+		$stop;
+	end
+endmodule

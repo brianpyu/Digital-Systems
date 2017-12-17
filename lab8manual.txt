@@ -1,0 +1,11 @@
+Brian Yu
+LAB 8 MANUAL
+MASTERMIND
+To play, flip switch 9. This resets the game. Flip switch 0 to pick a random 4 bit base 4 code.
+Use KEY3 to guess a 3, KEY2 to guess a 2, KEY1 to guess a 1, and KEY0 to guess a zero. Your guesses
+will appear in order in HEX3:0. After you have guessed four digits, the number of digits that you have
+guessed correctly in the correct places will appear in HEX5. The number of digits that you have guessed
+correctly in incorrect places will appear in HEX4. To refresh the guess screen, push any key and guess
+again. LEDR9:0 will display the number of guesses you have used so far, in binary. When HEX5 displays a
+4, you have guessed all four digits correctly and won the game.
+
